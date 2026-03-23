@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro de Proveedor — Mundo Verde Guatemala</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+    :root {
+      --green-dark: #1b4332;
+      --green-mid:  #2d6a4f;
+      --green-light:#40916c;
+    }
+    input::placeholder { color: #b0b7c3; }
+    input:focus { outline: none; }
+    button:active:not(:disabled) { transform: scale(0.98); }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+// ─── CONFIGURACIÓN ──────────────────────────────────────────────────────────
+// Reemplaza esto con la URL real de tu instancia n8n
+const WEBHOOK_URL = "https://agentsprod.redtec.ai/webhook/registro-proveedor";
+// ────────────────────────────────────────────────────────────────────────────
+
+const { useState, useRef, useCallback } = React;
+
+const INITIAL_FORM = { nit: "", nombre: "", direccion: "", correo: "", telefono: "" };
+
+function InputField({ label, name, value, onChange, type = "text", placeholder, hint, required }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+        {label}{required && <span style={{ color: "#dc2626", marginLeft: 2 }}>*</span>}
+      </label>
+      <input
+        type={type} name={name} value={value} onChange={onChange}
+        placeholder={placeholder} required={required}
+        style={{
+          width: "100%", padding: "10px 14px",
+          border: `1.5px solid ${focused ? "#2d6a4f" : "#d1d5db"}`,
+          borderRadius: 8, fontSize: 14, color: "#111827",
+          background: focused ? "#fff" : "#f9fafb",
+          boxShadow: focused ? "0 0 0 3px rgba(45,106,79,0.12)" : "none",
+          transition: "all 0.15s",
+        }}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+      {hint && <p style={{ fontSize: 11.5, color: "#9ca3af", marginTop: 4 }}>{hint}</p>}
+    </div>
+  );
+}
+
+function App() {
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [pdfFile, setPdfFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [status, setStatus] = useState("idle");
+  const [message, setMessage] = useState("");
+  const fileRef = useRef(null);
+
+  const handleChange = useCallback(e => {
+    const { name, value } = e.target;
+    setForm(p => ({ ...p, [name]: value }));
+  }, []);
+
+  const handleFileSelect = useCallback(file => {
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      setStatus("error"); setMessage("Solo se aceptan archivos PDF."); return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setStatus("error"); setMessage("El archivo no debe superar 15 MB."); return;
+    }
+    setPdfFile(file);
+    if (status === "error") setStatus("idle");
+  }, [status]);
+
+  const handleDrop = e => {
+    e.preventDefault(); setDragOver(false);
+    handleFileSelect(e.dataTransfer.files[0]);
+  };
+
+  const removeFile = e => {
+    e.stopPropagation(); setPdfFile(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    setStatus("loading"); setMessage("");
+    try {
+      let response;
+      const trimmed = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim()]));
+      if (pdfFile) {
+        const fd = new FormData();
+        Object.entries(trimmed).forEach(([k, v]) => fd.append(k, v));
+        fd.append("archivo", pdfFile);
+        response = await fetch(WEBHOOK_URL, { method: "POST", body: fd });
+      } else {
+        response = await fetch(WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(trimmed),
+        });
+      }
+      let data = {};
+      try { data = await response.json(); } catch {}
+      if (response.ok) {
+        setStatus("success");
+        setMessage(data.mensaje || "¡Solicitud enviada! El proveedor será registrado en breve.");
+        setForm(INITIAL_FORM); setPdfFile(null);
+        if (fileRef.current) fileRef.current.value = "";
+      } else {
+        setStatus("error");
+        setMessage(data.error || `Error del servidor (${response.status}). Intenta de nuevo.`);
+      }
+    } catch {
+      setStatus("error");
+      setMessage("No se pudo conectar. Verifica tu conexión e intenta de nuevo.");
+    }
+  };
+
+  const isLoading = status === "loading";
+  const allFilled = pdfFile || (form.nit.trim() && form.correo.trim());
+
+  const alertStyle = (type) => ({
+    display: "flex", alignItems: "flex-start", gap: 10,
+    borderRadius: 10, padding: "14px 16px", fontSize: 14,
+    marginTop: 16, lineHeight: 1.45,
+    ...(type === "success" ? { background: "#f0fdf4", border: "1px solid #86efac", color: "#166534" } :
+        type === "error"   ? { background: "#fef2f2", border: "1px solid #fca5a5", color: "#991b1b" } :
+                             { background: "#eff6ff", border: "1px solid #93c5fd", color: "#1e40af" }),
+  });
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #1a472a 0%, #2d6a4f 50%, #40916c 100%)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "24px 16px",
+    }}>
+      <div style={{
+        background: "#fff", borderRadius: 16, width: "100%", maxWidth: 540,
+        boxShadow: "0 24px 64px rgba(0,0,0,0.25)", overflow: "hidden",
+      }}>
+
+        {/* Header */}
+        <div style={{
+          background: "linear-gradient(135deg, #1b4332 0%, #2d6a4f 100%)",
+          padding: "28px 32px 24px", color: "#fff",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div style={{
+              width: 36, height: 36, background: "rgba(255,255,255,0.15)",
+              borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 18,
+            }}>🌿</div>
+            <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.05em",
+              color: "rgba(255,255,255,0.85)", textTransform: "uppercase" }}>
+              Mundo Verde Guatemala
+            </span>
+          </div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px", color: "#fff" }}>
+            Registro de Proveedor
+          </h1>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", margin: 0 }}>
+            Completa el formulario para registrar un nuevo proveedor en el sistema.
+          </p>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit} style={{ padding: "28px 32px 32px" }}>
+
+          <InputField label="NIT" name="nit" value={form.nit} onChange={handleChange}
+            placeholder="123456-7" hint="Sin guion o con guion, ambos son válidos." required />
+          <InputField label="Razón social / Nombre" name="nombre" value={form.nombre}
+            onChange={handleChange} placeholder="Empresa Ejemplo S.A." required />
+          <InputField label="Dirección fiscal" name="direccion" value={form.direccion}
+            onChange={handleChange} placeholder="Zona 10, Ciudad de Guatemala" />
+          <InputField label="Correo electrónico" name="correo" type="email" value={form.correo}
+            onChange={handleChange} placeholder="contacto@empresa.com" required />
+          <InputField label="Teléfono" name="telefono" type="tel" value={form.telefono}
+            onChange={handleChange} placeholder="2222-3333" />
+
+          {/* Divider */}
+          <div style={{ height: 1, background: "#f0f0f0", margin: "22px 0" }} />
+
+          {/* Upload */}
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+            Constancia de RTU / Documento fiscal
+            <span style={{ fontSize: 11.5, color: "#9ca3af", marginLeft: 6, fontWeight: 400 }}>(opcional)</span>
+          </label>
+
+          <div
+            onClick={() => fileRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            style={{
+              border: `2px ${pdfFile ? "solid #16a34a" : "dashed #d1d5db"}`,
+              borderRadius: 10, padding: 20, textAlign: "center", cursor: "pointer",
+              background: pdfFile || dragOver ? "#f0fdf4" : "#f9fafb",
+              transition: "all 0.15s",
+            }}
+          >
+            <input ref={fileRef} type="file" accept="application/pdf"
+              style={{ display: "none" }} onChange={e => handleFileSelect(e.target.files[0])} />
+            <div style={{ fontSize: 28, marginBottom: 8 }}>{pdfFile ? "✅" : "📄"}</div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#374151", margin: "0 0 2px" }}>
+              {pdfFile ? "Archivo cargado" : "Arrastra tu PDF aquí o haz clic"}
+            </p>
+            <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>
+              {pdfFile ? "Haz clic para cambiar" : "Solo archivos PDF · Máx. 15 MB"}
+            </p>
+            {pdfFile && (
+              <span onClick={removeFile} style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                background: "#dcfce7", border: "1px solid #86efac",
+                borderRadius: 20, padding: "4px 12px", fontSize: 12,
+                color: "#166534", fontWeight: 500, marginTop: 10, cursor: "pointer",
+              }}>
+                📎 {pdfFile.name} &nbsp;✕
+              </span>
+            )}
+          </div>
+
+          <p style={{ fontSize: 11.5, color: pdfFile ? "#16a34a" : "#9ca3af", marginTop: 8 }}>
+            {pdfFile
+              ? "🤖 Los datos se extraerán automáticamente del PDF con IA."
+              : "Si adjuntas el documento, los datos se extraerán automáticamente. Si no, se usarán los campos del formulario."}
+          </p>
+
+          {/* Alerts */}
+          {status === "success" && (
+            <div style={alertStyle("success")}><span>✅</span><span>{message}</span></div>
+          )}
+          {status === "error" && (
+            <div style={alertStyle("error")}><span>⚠️</span><span>{message}</span></div>
+          )}
+          {status === "loading" && (
+            <div style={alertStyle("info")}><span>⏳</span><span>Enviando solicitud…</span></div>
+          )}
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={isLoading || !allFilled}
+            style={{
+              width: "100%", padding: 13,
+              background: "linear-gradient(135deg, #1b4332 0%, #2d6a4f 100%)",
+              color: "#fff", border: "none", borderRadius: 10,
+              fontSize: 15, fontWeight: 700, cursor: isLoading || !allFilled ? "not-allowed" : "pointer",
+              marginTop: 24, opacity: isLoading || !allFilled ? 0.6 : 1,
+              transition: "opacity 0.15s, transform 0.1s",
+              letterSpacing: "0.02em",
+            }}
+          >
+            {isLoading ? "Enviando…" : "Registrar Proveedor"}
+          </button>
+        </form>
+
+        <div style={{ textAlign: "center", padding: "0 32px 24px", fontSize: 12, color: "#9ca3af" }}>
+          Los datos serán procesados y registrados en Odoo automáticamente.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

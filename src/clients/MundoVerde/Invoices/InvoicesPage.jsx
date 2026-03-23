@@ -3,6 +3,7 @@ import RB_Toast from "../../../components/RB_Toast";
 import { useState, useEffect } from "react";
 import { redtecInstance } from "../../../api/axios";
 import { Spinner } from "react-bootstrap";
+import RegistroProveedor from "../RegistroProveedor/RegistroProveedorPage";
 
 const MundoVerdeInvoices = () => {
     const { register, handleSubmit, reset } = useForm({
@@ -540,10 +541,17 @@ const MundoVerdeInvoices = () => {
                         <button className={activeTab === 'dashboard' ? 'active-tab px-3' : 'px-3'} onClick={() => setActiveTab('dashboard')}>
                             <i className="bi bi-history"></i> Historial SAT
                         </button>
+                        <button className={activeTab === 'proveedor' ? 'active-tab px-3' : 'px-3'} onClick={() => setActiveTab('proveedor')}>
+                            <i className="bi bi-building-add"></i> Reg. Proveedor
+                        </button>
                     </div>
                 </div>
 
-                {activeTab === 'form' ? (
+                {activeTab === 'proveedor' ? (
+                    <div style={{ maxWidth: 600, margin: '0 auto', padding: '0 1rem' }}>
+                        <RegistroProveedor embedded />
+                    </div>
+                ) : activeTab === 'form' ? (
                     <div className="layout-grid-v4">
                         <div className="preview-stack-v3">
                             {showPdfPreview && (

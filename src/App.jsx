@@ -21,6 +21,7 @@ import MundoVerdeInvoices from "./clients/MundoVerde/Invoices/InvoicesPage.jsx";
 import FicohsaCalls from "./clients/Ficohsa/Calls/CallsPage.jsx";
 import SpectrumLeads from "./clients/Spectrum/Leads/LeadsPage.jsx";
 import PepsiVideoAnalysis from "./clients/Pepsi/VideoAnalysis/VideoAnalysisPage.jsx";
+import RegistroProveedor from "./clients/MundoVerde/RegistroProveedor/RegistroProveedorPage.jsx";
 // ── Garoo services ─────────────────────────────────────────────────────────────
 import AgentOnboarding from "./Garoo/AgentOnboarding/AgentOnboardingPage.jsx";
 import AdminPortal from "./Garoo/Admin/AdminPortal.jsx";
@@ -56,7 +57,8 @@ function AppContent() {
     const location = useLocation();
     const isLoginPage = location.pathname === "/login";
     const isPublicForm = location.pathname === "/outbound-call-form";
-    const noLayout = isLoginPage || isPublicForm;
+    const isRegistroProveedor = location.pathname === "/registro-proveedor";
+    const noLayout = isLoginPage || isPublicForm || isRegistroProveedor;
 
     return (
         <>
@@ -116,6 +118,10 @@ function AppContent() {
                         <Route
                             path="/outbound-call-form"
                             element={<FicohsaCalls />}
+                        />
+                        <Route
+                            path="/registro-proveedor"
+                            element={<RegistroProveedor />}
                         />
                         <Route
                             path="/spectrum-leads"
