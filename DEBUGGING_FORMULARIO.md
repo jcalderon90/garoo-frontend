@@ -1,181 +1,183 @@
-# 🔍 Guía de Debugging - Formulario de Facturas
+# 🔍 Guía de Debugging — Módulo Mundo Verde
 
-## Problema Reportado
+## Formularios Cubiertos
+
+| Formulario | Ruta | Endpoint |
+|---|---|---|
+| Facturación (Nueva Factura) | `/form` → tab "Nueva Factura" | `webhook-factura` |
+| Registro de Proveedor | `/form` → tab "Reg. Proveedor" | `registro-proveedor` |
+
+Ambos usan `redtecInstance` (axios con base URL `VITE_API_URL`) con JWT automático en el header.
+
+---
+
+## 📄 Formulario de Facturas
+
+### Problema Reportado
 
 El formulario funciona correctamente cuando lo usa el desarrollador, pero falla para otros usuarios.
 
-## ✅ Mejoras Implementadas
+### ✅ Mejoras Implementadas
 
-### 1. **Compatibilidad de Tipos MIME**
+#### 1. Compatibilidad de Tipos MIME para XML
 
-- **Problema Original**: Diferentes navegadores reportan tipos MIME diferentes para archivos XML
-    - Chrome/Edge: `text/xml`
-    - Firefox: `application/xml`
-    - Windows Explorer: `text/plain`
-    - Algunos navegadores: Sin tipo MIME
+- **Problema**: Diferentes navegadores reportan tipos MIME distintos para `.xml`:
+  - Chrome/Edge: `text/xml`
+  - Firefox: `application/xml`
+  - Windows Explorer: `text/plain`
+  - Algunos navegadores: sin tipo MIME
 
-- **Solución**:
-    - Validación por extensión de archivo (`.xml`) como método principal
-    - Acepta múltiples tipos MIME: `text/xml`, `application/xml`, `text/plain`
-    - Se fuerza el tipo MIME correcto al enviar usando `Blob`
+- **Solución**: Validación por extensión (`.xml`) como método principal + forzar MIME via `Blob` al enviar.
 
-### 2. **Logging Mejorado**
-
-Se agregaron logs detallados en la consola para identificar problemas:
+#### 2. Logging Mejorado
 
 ```javascript
 // Al enviar el formulario
-console.log("Enviando formulario con:", {...});
+console.log("Enviando formulario con:", { nit, serie, pdfName, pdfType, xmlName, xmlType });
 
 // Al cargar archivos XML
-console.log('XML cargado correctamente:', {...});
+console.log('XML cargado correctamente:', { name, type, size });
 
 // En caso de error
-console.error("Error completo:", {...});
+console.error("Error completo:", { status, data, message });
 ```
 
-### 3. **Manejo de Errores Mejorado**
+#### 3. Manejo de Errores
 
-- Mensajes de error más específicos según el tipo de problema
-- Detección de errores de CORS
-- Detección de errores de conexión
-- Manejo de respuestas no-JSON del servidor
+- Mensajes específicos según tipo: CORS, conexión, 400/500 server.
+- Detección automática de errores de red vs errores del servidor.
+- Encoding UTF-8 al leer archivos: `reader.readAsText(file, 'UTF-8')`.
 
-### 4. **Encoding de Caracteres**
+---
 
-- Se especifica UTF-8 al leer archivos XML: `reader.readAsText(file, 'UTF-8')`
-- Importante para archivos con caracteres especiales (ñ, tildes, etc.)
+## 🏢 Formulario de Registro de Proveedor
 
-## 🐛 Cómo Debugging Cuando Falle
+### Campos del Formulario
+
+| Campo | Requerido | Validación |
+|---|---|---|
+| NIT | Sí (si no hay archivo) | Texto libre |
+| Razón Social | No | Texto libre |
+| Correo Electrónico | Sí (si no hay archivo) | Formato email |
+| Teléfono | No | Tipo `tel` |
+| Dirección Fiscal | No | Texto libre |
+| Archivo RTU (PDF/PNG/JPG) | No | Max 15 MB, extensión válida |
+
+> Si se adjunta un archivo, NIT y correo pasan a ser opcionales (la IA extrae los datos).
+
+### Logging Disponible
+
+```javascript
+// Al iniciar envío
+console.log("Iniciando envío de registro de proveedor...");
+
+// Al adjuntar archivo
+console.log("Adjuntando archivo:", file.name, file.type, file.size);
+
+// Datos del formulario enviados
+console.log("Datos de formulario:", { nit, nombre, correo, telefono, direccion });
+
+// Respuesta exitosa
+console.log("Respuesta del servidor:", response.data);
+
+// Errores
+console.error("Error en registro de proveedor:", error);
+console.error("Respuesta de error:", error.response?.status, error.response?.data);
+```
+
+### Errores Comunes
+
+#### Error: "Solo se aceptan archivos PDF, PNG o JPEG"
+**Causa:** El usuario intentó subir un archivo de otro tipo.
+**Solución:** Verificar que el archivo sea `.pdf`, `.png`, `.jpg` o `.jpeg`.
+
+#### Error: "El archivo no debe superar 15 MB"
+**Causa:** El archivo adjunto supera el límite de tamaño.
+**Solución:** Comprimir o reducir el archivo antes de adjuntarlo.
+
+#### Error: "El servidor no responde"
+**Causa:** Timeout o servidor caído en el endpoint `registro-proveedor`.
+**Solución:** Verificar estado del servidor backend.
+
+---
+
+## 🐛 Guía de Debugging General
 
 ### Paso 1: Abrir la Consola del Navegador
 
 1. Presionar `F12` o clic derecho → "Inspeccionar"
-2. Ir a la pestaña "Console"
+2. Ir a la pestaña **Console** y luego **Network**
 
-### Paso 2: Revisar los Logs
+### Paso 2: Identificar el Problema
 
-Cuando un usuario intente enviar el formulario, verás estos logs:
-
+#### CORS Error
 ```
-Enviando formulario con: {
-  nit: "123456789",
-  serie: "ABC123",
-  pdfName: "factura.pdf",
-  pdfType: "application/pdf",
-  pdfSize: 245678,
-  xmlName: "factura.xml",
-  xmlType: "text/xml",  ← IMPORTANTE: este valor
-  xmlSize: 12345
-}
+Access to fetch at '...' from origin '...' has been blocked by CORS policy
 ```
+**Solución:** Configurar CORS en el servidor para permitir el origen.
 
-### Paso 3: Identificar el Problema
-
-#### Error 1: "El archivo debe tener extensión .xml"
-
-**Causa**: El navegador no detectó el tipo MIME y el archivo no tiene extensión .xml
-**Solución**: Verificar que el archivo termine en `.xml`
-
-#### Error 2: CORS Error
-
-```
-Error de red. El servidor podría estar bloqueado por CORS o un firewall.
-```
-
-**Causa**: El servidor webhook no permite solicitudes desde el dominio del usuario
-**Solución**: Configurar CORS en el servidor para permitir el origen
-
-#### Error 3: NetworkError / Failed to fetch
-
-**Causa**:
-
+#### NetworkError / Failed to fetch
+**Causas posibles:**
 - Sin conexión a internet
-- Firewall bloqueando el servidor
-- VPN interfiriendo
+- Firewall o VPN bloqueando el servidor
 - Servidor caído
 
-**Solución**:
-
-- Verificar conexión a internet
-- Probar desactivar VPN
-- Verificar que el servidor esté activo
-
-#### Error 4: Error 400/500 del servidor
-
+#### Error 4xx/5xx del servidor
 ```
 Error del servidor (400): Bad Request
+Error del servidor (500): Internal Server Error
 ```
-
-**Causa**: El servidor rechazó los datos enviados
-**Solución**: Revisar los logs del servidor para ver qué campo causó el problema
-
-## 🧪 Cómo Probar con Diferentes Navegadores
-
-### Chrome
-
-### Firefox
-
-### Edge
-
-### Safari (Mac)
-
-- Safari puede ser más estricto con tipos MIME
-- Verificar en la consola el tipo MIME detectado
-
-## 📋 Checklist para Usuarios con Problemas
-
-Pedir al usuario que verifique:
-
-- [ ] ¿El archivo XML termina en `.xml`?
-- [ ] ¿El archivo PDF termina en `.pdf`?
-- [ ] ¿Los archivos pesan menos de 5MB cada uno?
-- [ ] ¿Hay conexión a internet?
-- [ ] ¿Qué navegador está usando? (Chrome, Firefox, Safari, Edge)
-- [ ] ¿Está usando VPN?
-- [ ] ¿Puede compartir una captura de la consola del navegador?
-
-## 🔧 Soluciones Rápidas
-
-### Para el Usuario:
-
-1. **Intentar con otro navegador** (preferiblemente Chrome o Edge)
-2. **Verificar extensiones de archivo**: asegurarse que termine en `.xml` y `.pdf`
-3. **Desactivar VPN temporalmente**
-4. **Limpiar caché del navegador**
-5. **Intentar con archivos más pequeños** (menos de 1MB para probar)
-
-### Para el Desarrollador:
-
-1. **Revisar configuración CORS del servidor**:
-
-    ```javascript
-    // El servidor debe incluir estos headers:
-    Access-Control-Allow-Origin: *  // o el dominio específico
-    Access-Control-Allow-Methods: POST
-    Access-Control-Allow-Headers: Content-Type, Accept
-    ```
-
-2. **Revisar logs del servidor** para ver qué está recibiendo
-
-3. **Verificar que el endpoint acepta `multipart/form-data`**
-
-## 📊 Datos a Recopilar de Usuarios con Problemas
-
-1. **Navegador y versión**
-2. **Sistema operativo**
-3. **Mensaje de error exacto**
-4. **Screenshot de la consola del navegador (F12)**
-5. **Tipo de archivo XML (abrir con notepad, copiar primera línea)**
-
-## 🚀 Mejoras Adicionales Recomendadas
-
-1. **Implementar retry automático** en caso de error de red
-2. **Agregar validación de contenido XML** (verificar que sea XML bien formado)
-3. **Implementar timeout** para requests que tarden mucho
-4. **Agregar indicador de progreso** para archivos grandes
-5. **Guardar en localStorage** los datos del formulario como backup
+**Solución:** Revisar los logs del servidor. El mensaje de error específico viene en `error.response.data`.
 
 ---
 
-**Nota**: Con las mejoras implementadas, el formulario ahora debería funcionar en la mayoría de navegadores modernos. Si persisten los problemas, la causa más probable es CORS o problemas en el servidor backend.
+## 📋 Checklist para Usuarios con Problemas
+
+### Facturación
+- [ ] ¿El archivo XML termina en `.xml`?
+- [ ] ¿El archivo PDF termina en `.pdf`?
+- [ ] ¿Los archivos pesan menos de 5 MB cada uno?
+- [ ] ¿Hay conexión a internet?
+- [ ] ¿Está usando VPN?
+- [ ] ¿Puede compartir captura de la consola (F12)?
+
+### Registro de Proveedor
+- [ ] ¿El archivo adjunto es PDF, PNG o JPEG?
+- [ ] ¿El archivo pesa menos de 15 MB?
+- [ ] Si no adjunta archivo, ¿llenó NIT y Correo?
+- [ ] ¿Hay conexión a internet?
+
+---
+
+## 🔧 Soluciones Rápidas
+
+### Para el Usuario
+1. Intentar con otro navegador (preferiblemente Chrome o Edge).
+2. Verificar extensiones de archivo.
+3. Desactivar VPN temporalmente.
+4. Limpiar caché del navegador (`Ctrl+Shift+R`).
+
+### Para el Desarrollador
+1. Revisar configuración CORS del servidor:
+   ```
+   Access-Control-Allow-Origin: [dominio]
+   Access-Control-Allow-Methods: POST
+   Access-Control-Allow-Headers: Content-Type, Authorization
+   ```
+2. Revisar logs del servidor para ver qué recibe en cada campo.
+3. Verificar que los endpoints acepten `multipart/form-data`.
+4. Validar que el JWT del usuario no haya expirado (revisar en `localStorage.garooToken`).
+
+---
+
+## 🚀 Mejoras Adicionales Recomendadas
+
+1. **Retry automático** en errores de red transitorios.
+2. **Validación de contenido XML** (verificar que sea XML bien formado antes de enviar).
+3. **Indicador de progreso** para uploads de archivos grandes.
+4. **Proteger `/registro-proveedor`** con `ProtectedRoute serviceId="form"` si el uso es interno.
+5. **Guardar en `sessionStorage`** datos del formulario como respaldo ante errores de red.
+
+---
+
+**Última actualización:** Marzo 2026 — Módulo Registro de Proveedor integrado al sistema.

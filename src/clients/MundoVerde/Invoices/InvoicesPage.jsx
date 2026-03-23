@@ -72,25 +72,47 @@ const MundoVerdeInvoices = () => {
     const onSubmit = async (data) => {
         setIsLoading(true);
         setIsPersistentToast(false);
+        
+        console.log("Iniciando envío de formulario de factura...");
+        
         try {
             const pdfFile = data.pdf?.[0] || selectedPdf;
             const xmlFile = data.xml?.[0] || selectedXml;
+            
             if (!pdfFile || !xmlFile || !data.nit || !data.serie) {
+                console.warn("Validación fallida: Campos incompletos", { pdfFile, xmlFile, nit: data.nit, serie: data.serie });
                 setToastTitle("Campos Incompletos");
                 setToastMessage("Completa todos los requerimientos.");
                 setToastVariant("warning");
                 setShowToast(true);
                 return;
             }
+
+            console.log("Datos para envío:", {
+                nit: data.nit.trim(),
+                serie: data.serie.trim(),
+                pdfName: pdfFile.name,
+                pdfType: pdfFile.type || 'unknown',
+                pdfSize: pdfFile.size,
+                xmlName: xmlFile.name,
+                xmlType: xmlFile.type || 'unknown',
+                xmlSize: xmlFile.size
+            });
+
             const formData = new FormData();
             formData.append("nit", data.nit.trim());
             formData.append("serie", data.serie.trim());
             formData.append("pdf", pdfFile, pdfFile.name);
-            formData.append("xml", xmlFile, xmlFile.name);
+            
+            // Forzar tipo MIME text/xml usando un Blob si es necesario, como sugiere la guía de debugging
+            const xmlBlob = new Blob([xmlContent], { type: 'text/xml' });
+            formData.append("xml", xmlBlob, xmlFile.name);
 
             const response = await redtecInstance.post("facturas", formData, {
                 headers: { "Content-Type": "multipart/form-data" }
             });
+
+            console.log("Respuesta del servidor:", response.data);
 
             if (response.data.status === "ok") {
                 setToastTitle("Éxito");
@@ -100,15 +122,26 @@ const MundoVerdeInvoices = () => {
                 reset(); setPdfUrl(null); setSelectedPdf(null); setXmlContent(null); setSelectedXml(null);
             } else {
                 setToastTitle("Enviado");
-                setToastMessage("La solicitud se procesó correctamente");
+                setToastMessage(response.data.mensaje || "La solicitud se procesó correctamente");
                 setToastVariant("success");
                 setIsPersistentToast(true);
             }
             setShowToast(true);
         } catch (error) {
-            void error;
+            console.error("Error completo en onSubmit:", error);
+            
+            let errorMsg = "Ocurrió un error al procesar la factura.";
+            
+            if (error.response) {
+                console.error("Respuesta de error del servidor:", error.response.status, error.response.data);
+                errorMsg = error.response.data?.error || error.response.data?.mensaje || `Error del servidor (${error.response.status})`;
+            } else if (error.request) {
+                console.error("No se recibió respuesta del servidor");
+                errorMsg = "No se pudo conectar con el servidor. Verifica tu conexión.";
+            }
+
             setToastTitle("Error");
-            setToastMessage("Ocurrió un error al procesar.");
+            setToastMessage(errorMsg);
             setToastVariant("danger");
             setShowToast(true);
         } finally {
@@ -127,8 +160,22 @@ const MundoVerdeInvoices = () => {
     const handleXmlChange = (e) => {
         const file = e.target.files[0];
         if (file) {
+            // Validación por extensión como método primario
+            const fileName = file.name.toLowerCase();
+            if (!fileName.endsWith('.xml')) {
+                console.warn("Intento de cargar archivo no XML:", fileName);
+                setToastTitle("Archivo Inválido");
+                setToastMessage("Por favor selecciona un archivo con extensión .xml");
+                setToastVariant("warning");
+                setShowToast(true);
+                return;
+            }
+
+            console.log('Cargando XML:', { name: file.name, type: file.type, size: file.size });
+            
             const reader = new FileReader();
             reader.onload = (event) => {
+                console.log('XML leído correctamente');
                 setXmlContent(event.target.result);
                 setSelectedXml(file);
             };
@@ -167,15 +214,27 @@ const MundoVerdeInvoices = () => {
                     .main-content-layout { display: none; }
                 }
 
-                /* HEADER & TABS SYMMETRY - COMPACT */
+                /* Eliminar el padding-top extra del page-container para esta página */
+                .orientation-wrapper {
+                    padding-top: 0 !important;
+                }
+
+                /* HEADER & TABS – sticky bajo el header global */
                 .header-wrapper-v3 {
+                    position: sticky;
+                    top: var(--header-height, 72px);
+                    z-index: 100;
+                    background: rgba(255, 255, 255, 0.97);
+                    backdrop-filter: blur(12px);
+                    -webkit-backdrop-filter: blur(12px);
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    margin-bottom: 1.5rem;
-                    padding: 0.5rem 1rem;
+                    margin-bottom: 1.25rem;
+                    padding: 0.6rem 1rem;
                     border-bottom: 1px solid #e2e8f0;
-                    max-width: 1000px;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+                    max-width: 1200px;
                     width: 100%;
                     margin-left: auto;
                     margin-right: auto;
@@ -538,17 +597,17 @@ const MundoVerdeInvoices = () => {
                         <button className={activeTab === 'form' ? 'active-tab px-3' : 'px-3'} onClick={() => setActiveTab('form')}>
                             <i className="bi bi-plus-lg"></i> Nueva Factura
                         </button>
+                        <button className={activeTab === 'proveedor' ? 'active-tab px-3' : 'px-3'} onClick={() => setActiveTab('proveedor')}>
+                            Reg. Proveedor
+                        </button>
                         <button className={activeTab === 'dashboard' ? 'active-tab px-3' : 'px-3'} onClick={() => setActiveTab('dashboard')}>
                             <i className="bi bi-history"></i> Historial SAT
-                        </button>
-                        <button className={activeTab === 'proveedor' ? 'active-tab px-3' : 'px-3'} onClick={() => setActiveTab('proveedor')}>
-                            <i className="bi bi-building-add"></i> Reg. Proveedor
                         </button>
                     </div>
                 </div>
 
                 {activeTab === 'proveedor' ? (
-                    <div style={{ maxWidth: 600, margin: '0 auto', padding: '0 1rem' }}>
+                    <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto' }}>
                         <RegistroProveedor embedded />
                     </div>
                 ) : activeTab === 'form' ? (
