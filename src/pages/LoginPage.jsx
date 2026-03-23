@@ -231,7 +231,7 @@ const LoginPage = () => {
                         <input 
                             type="email" 
                             className="input-v3"
-                            placeholder="admin@garoo.ai"
+                            placeholder="user@garoo.ai"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
